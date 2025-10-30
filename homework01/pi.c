@@ -18,8 +18,9 @@ double calcPi_P2(int num_steps);
 int main(int argc, char** argv)
 {
     fprintf(stdout, "The first 10 digits of Pi are %0.10f\n", PI);
-	
-    FILE* out = fopen("out.csv", "w");
+    char buffer[30];
+    sprintf(buffer, "run_16_thr_%i.csv", atoi(argv[1]));
+    FILE* out = fopen(buffer, "w");
     char s[] = "n, base, pi_base, p1, pi_1, p2, pi_2\n";
 	fwrite(s, sizeof(char), strlen(s), out);
 
@@ -27,7 +28,7 @@ int main(int argc, char** argv)
     uint64_t start_t;
     uint64_t end_t;
     InitTSC();
-
+	
 	for (int i = 1; i < 10; i++) {
     
   		uint32_t num_steps = (int)pow(10, (double)i);
@@ -65,7 +66,9 @@ int main(int argc, char** argv)
            	num_steps, ElapsedTime(end_t - start_t));
     		printf("Pi is %0.10f\n", Pi2);
 	}
-    return 0;
+	
+	fclose(out);
+	return 0;
 }
 
 
