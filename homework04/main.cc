@@ -127,16 +127,6 @@ int main(int argc, char** argv)
     get_result_gpu(db, b, m);
     timer[GPU_ALLOC_TIME] += ElapsedTime(ReadTSC() - t0);
 
-#ifdef DEBUG
-	char n_resName[MAX_FILENAME];
-    strcpy(n_resName, "csr_out.mtx");
-    fprintf(stdout, "Result file name: %s ... ", n_resName);
-    t0 = ReadTSC();
-    store_result(n_resName, b, m);
-    timer[STORE_TIME] += ElapsedTime(ReadTSC() - t0);
-    fprintf(stdout, "file saved\n");
-#endif
-
     // Execute ELL SPMV
     fprintf(stdout, "Executing GPU ELL SpMV ... \n");
     unsigned int* dec; // row pointer on GPU
@@ -640,13 +630,6 @@ void convert_csr_to_ell(unsigned int* csr_row_ptr, unsigned int* csr_col_ind,
 			count++;
 		}
 	}
-#ifdef DEBUG
-	for (int i = 0; i < m; i++){
-		for (int j = 0; j < max_len; j++) {
-			printf("%lf ", ell_v[i * max_len + j]);
-		} printf("\n");
-	}
-#endif
 	*ell_col_ind = ell_c;
 	*ell_vals = ell_v;
 	*n_new = max_len;

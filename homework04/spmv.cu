@@ -28,6 +28,7 @@ spmv_kernel_ell(unsigned int* col_ind, T* vals, int m, int n, int nnz,
 	for (int offset = blockSize / 2; offset > 0; offset >>=1) {
 		sum += __shfl_down_sync(0xffffffff, sum, offset);
 	} if (lane == 0) b[row] = sum;
+	
 }
 
 
@@ -61,7 +62,9 @@ void spmv_gpu_ell(unsigned int* col_ind, double* vals, int m, int n, int nnz,
     checkCudaErrors(cudaEventSynchronize(stop));
     checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
     printf("  Exec time (per itr): %0.8f s\n", (elapsedTime / 1e3 / MAX_ITER));
-
+	cudaFree(col_ind);
+	cudaFree(vals);	
+    cudaDeviceSynchronize();
 }
 
 
@@ -75,8 +78,8 @@ void allocate_ell_gpu(unsigned int* col_ind, double* vals, int m, int n,
 	CopyData(col_ind, m * n, sizeof(unsigned int), dev_col_ind);
 	CopyData(vals, m * n, sizeof(double), dev_vals);
 	CopyData(x, nnz, sizeof(double), dev_x);	
-
-	cudaMalloc(dev_b, m * sizeof(double));
+    	checkCudaErrors(cudaMalloc((void **)dev_b, m * sizeof(double)));
+	cudaDeviceSynchronize();	
 }
 
 void allocate_csr_gpu(unsigned int* row_ptr, unsigned int* col_ind, 
@@ -97,11 +100,11 @@ void allocate_csr_gpu(unsigned int* row_ptr, unsigned int* col_ind,
 	//cudaMemcpy(dev_vals, vals, nnz, cudaMemcpyHostToDevice);
 	
 	//cudaMalloc(dev_x, m * sizeof(double));
-	CopyData(x, nnz, sizeof(double), dev_x);
+	//nnz??
+	CopyData(x, n, sizeof(double), dev_x);
 	//cudaMemcpy(dev_x, x, m, cudaMemcpyHostToDevice);
 	
-	cudaMalloc(dev_b, m * sizeof(double));
-
+	checkCudaErrors(cudaMalloc((void**)dev_b, m * sizeof(double)));
 }
 
 void get_result_gpu(double* dev_b, double* b, int m)
@@ -160,6 +163,7 @@ void CopyData(
 
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
+	cudaDeviceSynchronize();
 }
 
 
@@ -168,24 +172,6 @@ __global__ void
 spmv_kernel(unsigned int* row_ptr, unsigned int* col_ind, T* vals, 
         int m, int n, int nnz, double* x, double* b)
 {
-/*	unsigned int row = blockIdx.x;
-	if (row >= m) return;
-
-	unsigned int lane = threadIdx.x;
-
-	int start = row_ptr[row];
-	int end = row_ptr[row + 1];
-
-	T sum = 0;
-	for (int i = start + lane; i < end; i+=blockDim.x) {
-		sum += vals[i] * x[col_ind[i]];
-	}
-
-	#pragma unroll
-	for (int offset = 32; offset > 0; offset >>=1) 
-		sum += __shfl_down_sync(0xffffffff, sum, offset);
-	if (lane == 0) b[row] = sum;
-*/
 	int row = threadIdx.x + blockDim.x * blockIdx.x;
 	if (row < m) {
 		int start = row_ptr[row];
@@ -231,5 +217,8 @@ void spmv_gpu(unsigned int* row_ptr, unsigned int* col_ind, double* vals,
     checkCudaErrors(cudaEventSynchronize(stop));
     checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
     printf("  Exec time (per itr): %0.8f s\n", (elapsedTime / 1e3 / MAX_ITER));
-
+        cudaFree(row_ptr);
+        cudaFree(col_ind);
+        cudaFree(vals);
+    cudaDeviceSynchronize();
 }
