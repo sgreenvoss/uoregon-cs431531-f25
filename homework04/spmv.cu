@@ -13,23 +13,40 @@ __global__ void
 spmv_kernel_ell(unsigned int* col_ind, T* vals, int m, int n, int nnz, 
                 double* x, double* b)
 {
+	// this array will be shared between all threads in the block.
+	extern __shared__ T data[];
+
 	unsigned int row = blockIdx.x;
-	unsigned int lane = threadIdx.x;
-	unsigned int blockSize = blockDim.x;
+	unsigned int thread = threadIdx.x;
 
-	if (row >= m) return;
+	T part_sum = 0;
 
-	T sum = 0;
-	for (int k = lane; k < n; k+=blockDim.x) {
-		int j = row * n + k;
-		sum += vals[j] * x[col_ind[j]];
+	unsigned int row_start = row * n;
+	unsigned int row_end = row_start + n;
+
+	for (int k = row_start + thread; k < row_end; k+=blockDim.x) {
+		int col = col_ind[k]; // not doing any checking here because
+					// i have the oobs as 0.
+		part_sum += vals[k] * x[col];
 	}
-	// reduction
-	for (int offset = blockSize / 2; offset > 0; offset >>=1) {
-		sum += __shfl_down_sync(0xffffffff, sum, offset);
-	} if (lane == 0) b[row] = sum;
-	
+	// this array holds the partial sums computed by each thread in the block
+	data[thread] = part_sum;
+	__syncthreads();
+
+	// in parallel, reduce the partial sums into a single sum. 
+	for (int i = blockDim.x / 2; i > 0; i>>=1) {
+		if (thread < i) {
+			data[thread] += data[thread + i];
+		}
+		__syncthreads();
+	} 
+	// assign the full sum computed for this row to the proper index.
+	if (thread == 0) {
+		b[row] = data[0];
+	}
+
 }
+
 
 
 
@@ -58,12 +75,13 @@ void spmv_gpu_ell(unsigned int* col_ind, double* vals, int m, int n, int nnz,
         spmv_kernel_ell<double><<<dimGrid, dimBlock, shared>>>(col_ind, vals, 
                                                                m, n, nnz, x, b);
     }
+    //checkCudaErrors(cudaFree(col_ind));
+    //checkCudaErrors(cudaFree(vals));
+    //checkCudaErrors(cudaFree(x));
     checkCudaErrors(cudaEventRecord(stop, 0));
     checkCudaErrors(cudaEventSynchronize(stop));
     checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
     printf("  Exec time (per itr): %0.8f s\n", (elapsedTime / 1e3 / MAX_ITER));
-	cudaFree(col_ind);
-	cudaFree(vals);	
     cudaDeviceSynchronize();
 }
 
@@ -77,9 +95,6 @@ void allocate_ell_gpu(unsigned int* col_ind, double* vals, int m, int n,
     // copy ELL data to GPU and allocate memory for output
 	CopyData(col_ind, m * n, sizeof(unsigned int), dev_col_ind);
 	CopyData(vals, m * n, sizeof(double), dev_vals);
-	CopyData(x, nnz, sizeof(double), dev_x);	
-    	checkCudaErrors(cudaMalloc((void **)dev_b, m * sizeof(double)));
-	cudaDeviceSynchronize();	
 }
 
 void allocate_csr_gpu(unsigned int* row_ptr, unsigned int* col_ind, 
@@ -87,22 +102,13 @@ void allocate_csr_gpu(unsigned int* row_ptr, unsigned int* col_ind,
                       unsigned int** dev_row_ptr, unsigned int** dev_col_ind,
                       double** dev_vals, double** dev_x, double** dev_b)
 {
-	//cudaMalloc(dev_row_ptr, m * sizeof(int));
 	CopyData(row_ptr, m + 1, sizeof(int), dev_row_ptr);
-	//cudaMemcpy(dev_row_ptr, row_ptr, m, cudaMemcpyHostToDevice);
 
-	//cudaMalloc(dev_col_ind, nnz * sizeof(int));
 	CopyData(col_ind, nnz, sizeof(int), dev_col_ind);
-	//cudaMemcpy(dev_col_ind, col_ind, nnz, cudaMemcpyHostToDevice);
 
-	//cudaMalloc(dev_vals, nnz * sizeof(double));
 	CopyData(vals, nnz, sizeof(double), dev_vals);
-	//cudaMemcpy(dev_vals, vals, nnz, cudaMemcpyHostToDevice);
 	
-	//cudaMalloc(dev_x, m * sizeof(double));
-	//nnz??
 	CopyData(x, n, sizeof(double), dev_x);
-	//cudaMemcpy(dev_x, x, m, cudaMemcpyHostToDevice);
 	
 	checkCudaErrors(cudaMalloc((void**)dev_b, m * sizeof(double)));
 }
@@ -160,10 +166,9 @@ void CopyData(
   checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
   printf("  Pinned Device to Host bandwidth (GB/s): %f\n",
          (N * dsize) * 1e-6 / elapsedTime);
-
+	checkCudaErrors(cudaFreeHost(h_in_pinned));	
   cudaEventDestroy(start);
   cudaEventDestroy(stop);
-	cudaDeviceSynchronize();
 }
 
 
@@ -213,12 +218,26 @@ void spmv_gpu(unsigned int* row_ptr, unsigned int* col_ind, double* vals,
                                                            vals, m, n, nnz, 
                                                            x, b);
     }
+    //checkCudaErrors(cudaFree(col_ind));
+    //checkCudaErrors(cudaFree(vals));
+    //checkCudaErrors(cudaFree(x));
+    //checkCudaErrors(cudaFree(row_ptr));
     checkCudaErrors(cudaEventRecord(stop, 0));
     checkCudaErrors(cudaEventSynchronize(stop));
     checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
     printf("  Exec time (per itr): %0.8f s\n", (elapsedTime / 1e3 / MAX_ITER));
-        cudaFree(row_ptr);
-        cudaFree(col_ind);
-        cudaFree(vals);
+    cudaEventDestroy(start);
+	cudaEventDestroy(stop);
     cudaDeviceSynchronize();
+}
+
+void spmv_all_free(unsigned int* row_ptr, unsigned int* col_ind, double* vals,
+              double* x, double* b, unsigned int *row, double*v) {
+	cudaFree(row_ptr);
+	cudaFree(col_ind);
+	cudaFree(vals);
+	cudaFree(x);
+	cudaFree(b);
+	cudaFree(row);
+	cudaFree(v);
 }

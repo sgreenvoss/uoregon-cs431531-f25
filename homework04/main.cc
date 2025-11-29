@@ -119,7 +119,6 @@ int main(int argc, char** argv)
     // spmv_gpu_2(drp, dci, dv, m, n, nnz, dx, db);
     spmv_gpu(drp, dci, dv, m, n, nnz, dx, db);
     timer[GPU_SPMV_TIME] += ElapsedTime(ReadTSC() - t0);
-
     // copy data back from the GPU
     double* b = (double*) malloc(sizeof(double) * m);;
     assert(b);
@@ -131,26 +130,23 @@ int main(int argc, char** argv)
     fprintf(stdout, "Executing GPU ELL SpMV ... \n");
     unsigned int* dec; // row pointer on GPU
     double* dev; // col index on GPU
-    double* dex; // input x on GPU
-    double* deb; // result b on GPU
+    //double* dex; // input x on GPU
+    //double* deb; // result b on GPU
     t0 = ReadTSC();
-    allocate_ell_gpu(ell_col_ind, ell_vals, m, n_new, nnz, x, &dec, &dev, &dex,
-                     &deb);
+    allocate_ell_gpu(ell_col_ind, ell_vals, m, n_new, nnz, x, &dec, &dev, &dx,
+                     &db);
     timer[GPU_ALLOC_TIME] += ElapsedTime(ReadTSC() - t0);
 
     t0 = ReadTSC();
-    spmv_gpu_ell(dec, dev, m, n_new, nnz, dex, deb);
+    spmv_gpu_ell(dec, dev, m, n_new, nnz, dx, db);
     timer[GPU_ELL_TIME] += ElapsedTime(ReadTSC() - t0);
-
     // copy data back from the GPU
     double* be = (double*) malloc(sizeof(double) * m);;
     assert(be);
     t0 = ReadTSC();
-    get_result_gpu(deb, be, m);
+    get_result_gpu(db, be, m);
     timer[GPU_ALLOC_TIME] += ElapsedTime(ReadTSC() - t0);
-
-
-
+    
     // Calculate CPU SPMV
     double* bb = (double*) malloc(sizeof(double) * m);
     assert(bb);
@@ -198,7 +194,7 @@ int main(int argc, char** argv)
     free(row_ind);
     free(col_ind);
     free(val);
-
+	spmv_all_free(drp, dci, dv, dx, db, dec, dev);
     return 0;
 }
 
@@ -599,40 +595,43 @@ void convert_csr_to_ell(unsigned int* csr_row_ptr, unsigned int* csr_col_ind,
                         unsigned int** ell_col_ind, double** ell_vals, 
                         int* n_new)
 {
-	unsigned int * ell_c = *ell_col_ind;
-	double * ell_v = *ell_vals;
 
 	// determine max number of nonzeros in all cols
-	int max_row_index = 0;
 	int max_len = 0;
-	for (int i = 1; i < m; i++) {
-		if (csr_row_ptr[i] - csr_row_ptr[i - 1] > max_len) {
-			max_row_index = i;
-			max_len = csr_row_ptr[i] - csr_row_ptr[i - 1];
+	for (int i = 0; i < m; i++) {
+		int row_length = csr_row_ptr[i+1] - csr_row_ptr[i];
+		if (row_length > max_len) {
+			max_len = row_length;
 		}
 	}
 
+	*n_new = max_len;
+	
 	// make room for the data, init to 0 (maybe not needed)
-	ell_c = (unsigned int *) malloc(sizeof(unsigned int) * m * max_len);
-	ell_v = (double *) malloc(sizeof(double) * m * max_len);
+	*ell_col_ind = (unsigned int *) malloc(sizeof(unsigned int) * m * max_len);
+	*ell_vals = (double *) malloc(sizeof(double) * m * max_len);
 	int ell_len = sizeof(unsigned int) * m * max_len;
 	int vals_len = sizeof(double) * m * max_len;
 	
-	memset (ell_c, 0, ell_len);
-	memset (ell_v, 0.0, vals_len);
-
-	int begin, end, count;
+	for (int i=0; i< m * max_len; i++) {
+        	(*ell_col_ind)[i] = 0;
+        	(*ell_vals)[i] = 0.0;
+	}
+		#pragma omp parallel for schedule(static)
 	for (int i = 0; i < m; i++) {
-		begin = csr_row_ptr[i]; end = csr_row_ptr[i + 1]; count = 0;
+		int begin = csr_row_ptr[i]; 
+		int end = csr_row_ptr[i + 1]; 
+		int count = 0;
 		for (int j = begin; j < end; j++) {
-			ell_c[i * max_len + count] = csr_col_ind[j];
-			ell_v[i * max_len + count] = csr_vals[j];
+			int dst = i * max_len + count;
+			(*ell_col_ind)[dst] = csr_col_ind[j];
+			(*ell_vals)[i * max_len + count] = csr_vals[j];
 			count++;
 		}
 	}
-	*ell_col_ind = ell_c;
-	*ell_vals = ell_v;
-	*n_new = max_len;
+#ifdef DEBUG
+	printf("n for ell is %i, m is %i\n", max_len, m);
+#endif
 }
 
 

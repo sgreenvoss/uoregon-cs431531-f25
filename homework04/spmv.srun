@@ -17,7 +17,7 @@ module load cuda
 export OMP_PROC_BIND=true
 export OMP_NUM_THREADS=28
 
-echo "running on $(hostname)"
-echo "cuda version: $(nvcc --version)"
-echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-srun compute-sanitizer --tool memcheck  --leak-check full ./spmv cant/cant.mtx cant/b.mtx try.mtx
+#echo "running on $(hostname)"
+#echo "cuda version: $(nvcc --version)"
+#echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+srun ./spmv cant/cant.mtx cant/b.mtx try.mtx

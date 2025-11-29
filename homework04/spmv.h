@@ -24,5 +24,7 @@ void CopyData(
   unsigned int N,
   unsigned int dsize,
   T** d_in);
+void spmv_all_free(unsigned int* row_ptr, unsigned int* col_ind, double* vals,
+              double* x, double* b, unsigned int*, double*);
 #endif
 
