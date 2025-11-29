@@ -177,7 +177,38 @@ __global__ void
 spmv_kernel(unsigned int* row_ptr, unsigned int* col_ind, T* vals, 
         int m, int n, int nnz, double* x, double* b)
 {
-	int row = threadIdx.x + blockDim.x * blockIdx.x;
+	extern __shared__ T data[];
+
+        unsigned int row = blockIdx.x;
+        unsigned int thread = threadIdx.x;
+	
+	if (row >= m) return;
+
+        T part_sum = 0;
+
+        unsigned int row_start = row_ptr[row];
+        unsigned int row_end = row_ptr[row + 1];
+	
+        for (int i = row_start + thread; i < row_end; i+=blockDim.x) {
+                part_sum += vals[i] * x[col_ind[i]];
+        }
+        // this array holds the partial sums computed by each thread in the block
+        data[thread] = part_sum;
+        __syncthreads();
+
+        // in parallel, reduce the partial sums into a single sum.
+        for (int i = blockDim.x / 2; i > 0; i>>=1) {
+                if (thread < i) {
+                        data[thread] += data[thread + i];
+                }
+                __syncthreads();
+        }
+        // assign the full sum computed for this row to the proper index.
+        if (thread == 0) {
+                b[row] = data[0];
+        }
+
+/*	int row = threadIdx.x + blockDim.x * blockIdx.x;
 	if (row < m) {
 		int start = row_ptr[row];
 		int end = row_ptr[row+1];
@@ -188,6 +219,7 @@ spmv_kernel(unsigned int* row_ptr, unsigned int* col_ind, T* vals,
 		}
 		b[row] = sum;
 	}
+*/
 }
 
 
