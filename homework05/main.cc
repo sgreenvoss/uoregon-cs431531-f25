@@ -468,7 +468,7 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
 	// --------------------------------------------------------------------
 	// STEP 1 Calculate how much work each node needs to do
     // Rank 0 now determines how work will be distributed among the ranks
-    int nnz_per_rank = nnz / world_size;
+    int nnz_per_rank = (nnz + world_size - 1) / world_size;
 	
 	// --------------------------------------------------------------------
 
@@ -550,8 +550,11 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
 
         val = (double*) malloc(sizeof(double) * nnz_per_rank);
         assert(val);
+        printf("other rank %d finished allocating\n", r);
 
     }
+
+    MPI_Barrier(MPI_COMM_WORLD);
 
     start = MPI_Wtime();    
     // Scatter the data to each node
@@ -585,7 +588,7 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
 
     // set up result vector
     start = MPI_Wtime();
-    double* res_coo = (double*) malloc(sizeof(double) * m);;
+    double* res_coo = (double*) malloc(sizeof(double) * m);
     assert(res_coo);
 
     fprintf(stdout, "Calculating COO SpMV ... ");
@@ -596,11 +599,11 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
     end = MPI_Wtime();
     timer[SPMV_COO_TIME] = end - start;
     // Make sure everyone's finished before doing any communication
-    printf("before this barrier\n");
+    printf("before this barrier, %d\n", r);
 
     MPI_Barrier(MPI_COMM_WORLD);
 	// --------------------------------------------------------------------
-        printf("past this barrier\n");
+    printf("past this barrier\n");
 
 	// --------------------------------------------------------------------
 	// STEP 5 - Calculate the final result from local results
@@ -615,7 +618,7 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
     start = MPI_Wtime();
 	// Get the result from everyone and calculate the final result
 	
-    memcpy(res_coo_final + (r * nnz_per_rank), res_coo + (r * nnz_per_rank), sizeof(res_coo));
+    MPI_Reduce(res_coo, res_coo_final, m, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     end = MPI_Wtime();
     timer[RES_REDUCE_TIME] = end - start;
@@ -635,5 +638,3 @@ void spmv_coo_naive(int world_rank, int world_size, int* row_ind, int* col_ind,
     destroy_locks(writelock, m);
 
 }
-
-
