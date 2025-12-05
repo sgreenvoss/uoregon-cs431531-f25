@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --account=sgreenvoss
+#SBATCH --job-name=spmv_gpu
+#SBATCH --output=spmv_%j.out
+#SBATCH --error=spmv_%j.err
+#SBATCH --partition=short
+#SBATCH --time=00:30:00
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=28
+
+module purge
+module load gcc
+module load cuda
+
+export OMP_PROC_BIND=true
+export OMP_NUM_THREADS=28
+
+#echo "running on $(hostname)"
+#echo "cuda version: $(nvcc --version)"
+#echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+srun ./spmv cant/cant.mtx cant/b.mtx try.mtx
