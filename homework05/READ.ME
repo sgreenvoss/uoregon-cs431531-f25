@@ -1,0 +1,20 @@
+This homework involves implementing sparse matrix-vector multiply (SpMV) on a disstributed system using MPI.
+
+Setup:
+1) I have provided a batch file for using MPI (mpi_test.batch), which shows how to execute MPI code. Things to note are:
+    a) It uses openmpi/4.1.5 as the MPI library, and loads the module before starting execution
+    b) It uses mpirun to launch MPI code
+
+2) Currently nodes=1, --ntasks-per-node=4, --cpus-per-task=1
+   This suggest the code is using 1 physical compute node, but creates 4 MPI tasks on the node, each using 1 processor core. This was done to make it easier to get a compute node for testing (getting multiple nodes is more difficult).
+   While you are running performance tests, try to use up to 4 nodes if they are available. If you are running with multiple compute nodes, try to use --ntasks-per-node=1 and --cpus-per-task=28 and use OpenMP to parallelize your code in each MPI task (1 MPI task is assigned to 1 compute node).
+
+
+Assignment:
+1) Read the provided code to get a clear understanding of how MPI works and what the code is trying to do.
+2) As you will see, some of the code is already provided for you. You mostly have to look for TODO and fill in the missing code. 
+3) Ignore the code commented out using #if 0 - these are from a different version of this homework, as discussed during class (i.e., for 2-D COO and CSR)
+4) You may also see a lot of warnings from mmio.c - this is an open source code for loading the matrix market format that was originally written in C. Ignore them, as they won't cause any problems with your code.
+5) The function that will need to be completed is spmv_coo_naive(). Please do not change anything outside of this, as it will likely cause problems with running this code.
+6) If you have trouble following the provided code in spmv_coo_naive(), you may re-write the entire code from scratch (but not recommended). Just make sure it works with the rest of the provided code.
+7) If you are having a bug with the last MPI rank not calculating the local SpMV, think about what's different about the last MPI rank compared to the others, particularly in terms of how many elements it's responsible for compared to the other ranks.
